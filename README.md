@@ -11,6 +11,7 @@
   <img src="https://img.shields.io/badge/Swift-5.9-orange" alt="Swift 5.9">
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="0 dependencies">
   <img src="https://img.shields.io/badge/tests-60-blue" alt="60 tests">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
 </p>
 
 ---
@@ -256,4 +257,6 @@ cd swift && swift test
 
 ## 许可
 
-本仓库暂未附带 LICENSE 文件，默认保留所有权利。如果你希望他人可以自由使用、修改、分发，建议补一份 [MIT](https://choosealicense.com/licenses/mit/) 或 [Apache-2.0](https://choosealicense.com/licenses/apache-2.0/) 许可证。
+[MIT](LICENSE) © 2026 adong
+
+可自由使用、修改、分发与商用，保留版权声明与许可声明即可。软件按「原样」提供，不附带任何担保。
