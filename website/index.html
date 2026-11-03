@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水印 · 给图片与 PDF 加水印的 macOS 原生应用</title>
+<meta name="description" content="水印是一款完全离线的 macOS 原生应用：给图片和 PDF 批量加文字或图片水印，PDF 采用增量更新，原文件字节不动，书签、注释、表单、元数据全部保留。">
+<meta property="og:title" content="水印 · 给图片与 PDF 加水印的 macOS 原生应用">
+<meta property="og:description" content="原生 Swift 开发，完全离线。PDF 增量更新，只追加不重写；图片保持原格式与元数据。">
+<meta property="og:image" content="assets/ui.png">
+<link rel="icon" type="image/png" href="assets/icon-128.png">
+<link rel="apple-touch-icon" href="assets/icon-256.png">
+<style>
+  :root {
+    --ink: #10131a;
+    --ink-2: #4d5159;
+    --ink-3: #83878f;
+    --line: rgba(16, 19, 26, .09);
+    --line-strong: rgba(16, 19, 26, .16);
+    --bg: #ffffff;
+    --bg-soft: #f5f6f8;
+    --bg-card: #ffffff;
+    --accent: #12707e;
+    --accent-ink: #0b4b55;
+    --accent-soft: rgba(18, 112, 126, .08);
+    --radius: 18px;
+    --shadow-sm: 0 1px 2px rgba(16,19,26,.05), 0 6px 18px rgba(16,19,26,.05);
+    --shadow-lg: 0 24px 60px rgba(12, 24, 40, .16), 0 2px 8px rgba(12, 24, 40, .06);
+    --maxw: 1080px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+                 "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  img { max-width: 100%; display: block; }
+  a { color: inherit; text-decoration: none; }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- 顶部导航 ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,.82);
+    backdrop-filter: saturate(180%) blur(18px);
+    -webkit-backdrop-filter: saturate(180%) blur(18px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: var(--maxw); margin: 0 auto; padding: 10px 24px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: .01em; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  .nav-links { margin-left: auto; display: flex; gap: 26px; font-size: 14px; color: var(--ink-2); }
+  .nav-links a { padding: 4px 0; border-bottom: 1px solid transparent; transition: color .18s, border-color .18s; }
+  .nav-links a:hover { color: var(--ink); border-color: var(--line-strong); }
+  .nav-cta {
+    margin-left: 8px; font-size: 13.5px; font-weight: 600;
+    padding: 7px 16px; border-radius: 999px;
+    background: var(--ink); color: #fff;
+    transition: transform .18s, opacity .18s;
+  }
+  .nav-cta:hover { opacity: .85; transform: translateY(-1px); }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    position: relative;
+    background:
+      radial-gradient(900px 420px at 16% -10%, rgba(52, 170, 178, .22), transparent 60%),
+      radial-gradient(760px 400px at 88% 0%, rgba(70, 92, 168, .26), transparent 62%),
+      linear-gradient(168deg, #0a0f1c 0%, #0d1727 46%, #0c2a30 100%);
+    color: #fff;
+    padding: 82px 0 0;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(70% 60% at 50% 0%, #000 30%, transparent 78%);
+    -webkit-mask-image: radial-gradient(70% 60% at 50% 0%, #000 30%, transparent 78%);
+    pointer-events: none;
+  }
+  .hero-content { position: relative; z-index: 2; text-align: center; }
+  .hero-icon {
+    width: 92px; height: 92px; border-radius: 22px; margin: 0 auto 22px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.12);
+  }
+  .hero h1 {
+    font-size: clamp(30px, 5vw, 52px);
+    line-height: 1.22; letter-spacing: -.02em;
+    margin: 0 0 18px; font-weight: 600;
+  }
+  .hero h1 span {
+    background: linear-gradient(92deg, #8fe3e0, #a9c8ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead {
+    font-size: clamp(15px, 2vw, 18px);
+    color: rgba(255,255,255,.76);
+    max-width: 720px; margin: 0 auto 30px;
+  }
+  .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 24px; border-radius: 999px;
+    font-size: 15px; font-weight: 600;
+    transition: transform .18s, background .18s, border-color .18s;
+  }
+  .btn-primary { background: #fff; color: #0b1220; }
+  .btn-primary:hover { transform: translateY(-2px); }
+  .btn-ghost {
+    border: 1px solid rgba(255,255,255,.28); color: #fff;
+    background: rgba(255,255,255,.06);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.13); }
+  .hero-meta {
+    margin-top: 18px; font-size: 12.5px; color: rgba(255,255,255,.5);
+    display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+  }
+  .hero-shot {
+    position: relative; z-index: 2;
+    max-width: 1060px; margin: 52px auto -118px;
+    padding: 0 24px;
+  }
+  .hero-shot img {
+    width: 100%; border-radius: 14px;
+    box-shadow: 0 40px 90px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.14);
+  }
+  .hero-spacer { height: 150px; background: linear-gradient(#0c2a30, #ffffff 72%); }
+
+  /* ---------- 通用区块 ---------- */
+  section { padding: 88px 0; }
+  section.tight { padding: 56px 0; }
+  .eyebrow {
+    font-size: 12.5px; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 12px;
+  }
+  h2 {
+    font-size: clamp(24px, 3.4vw, 36px);
+    line-height: 1.3; letter-spacing: -.015em;
+    margin: 0 0 14px; font-weight: 600;
+  }
+  .section-desc {
+    font-size: 16px; color: var(--ink-2); max-width: 680px; margin: 0 0 44px;
+  }
+  .center { text-align: center; }
+  .center .section-desc { margin-left: auto; margin-right: auto; }
+
+  /* ---------- 数据条 ---------- */
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--line); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .stat { background: var(--bg-card); padding: 26px 22px; }
+  .stat b { display: block; font-size: 26px; letter-spacing: -.02em; font-weight: 650; margin-bottom: 4px; }
+  .stat span { font-size: 13px; color: var(--ink-3); line-height: 1.6; display: block; }
+
+  /* ---------- 功能卡片 ---------- */
+  .grid { display: grid; gap: 16px; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 24px;
+    transition: box-shadow .22s, transform .22s, border-color .22s;
+  }
+  .card:hover { box-shadow: var(--shadow-sm); transform: translateY(-2px); border-color: var(--line-strong); }
+  .card h3 { font-size: 16.5px; margin: 0 0 8px; font-weight: 600; letter-spacing: -.005em; }
+  .card p { font-size: 14px; color: var(--ink-2); margin: 0; }
+  .card .ico {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center; margin-bottom: 14px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .card .ico svg { width: 18px; height: 18px; }
+  .card.wide { display: flex; gap: 18px; align-items: flex-start; }
+  .card.wide .ico { margin-bottom: 0; flex: none; }
+
+  /* ---------- 对比图 ---------- */
+  .compare-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .compare-col { text-align: center; }
+  .compare-col img {
+    width: 100%; border-radius: 10px; border: 1px solid var(--line);
+    box-shadow: var(--shadow-sm); background: #fff;
+  }
+  .compare-label {
+    display: inline-block; font-size: 12.5px; font-weight: 600;
+    padding: 3px 12px; border-radius: 999px; margin-bottom: 12px;
+    background: var(--bg-soft); color: var(--ink-2);
+  }
+  .compare-label.on { background: var(--accent-soft); color: var(--accent-ink); }
+
+  .slider-compare {
+    position: relative; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+    cursor: ew-resize; touch-action: none; user-select: none;
+    background: #0b1220;
+  }
+  .slider-compare img { width: 100%; pointer-events: none; }
+  .slider-compare .top { position: absolute; inset: 0; }
+  .slider-compare .top img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .cmp-handle {
+    position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.9);
+    box-shadow: 0 0 12px rgba(0,0,0,.35);
+  }
+  .cmp-knob {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(255,255,255,.94); color: #0b1220;
+    display: grid; place-items: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+  }
+  .cmp-knob svg { width: 16px; height: 16px; }
+  .cmp-tag {
+    position: absolute; top: 14px; font-size: 11.5px; font-weight: 600;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(10,16,28,.62); color: #fff; backdrop-filter: blur(6px);
+  }
+  .cmp-tag.l { left: 14px; }
+  .cmp-tag.r { right: 14px; }
+  .caption { font-size: 13px; color: var(--ink-3); margin-top: 12px; text-align: center; }
+  .feature-split { display: grid; grid-template-columns: .82fr 1.18fr; gap: 46px; align-items: center; }
+  .feature-split img {
+    width: 100%; border-radius: 14px; border: 1px solid var(--line);
+    box-shadow: var(--shadow-lg);
+  }
+  .mini-list { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+  .mini-list li { margin-bottom: 7px; }
+
+  /* ---------- 表格 ---------- */
+  .table-wrap {
+    overflow-x: auto; border: 1px solid var(--line);
+    border-radius: var(--radius); max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--bg-card); }
+  th, td { text-align: left; padding: 13px 18px; vertical-align: top; }
+  thead th {
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    background: var(--bg-soft); border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody tr + tr td { border-top: 1px solid var(--line); }
+  tbody td:first-child { font-weight: 600; white-space: nowrap; }
+  td code, p code, li code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 12.5px; background: var(--bg-soft);
+    padding: 1.5px 6px; border-radius: 5px; color: var(--accent-ink);
+  }
+  .muted { color: var(--ink-3); }
+
+  /* ---------- 参数手册 ---------- */
+  .params { display: grid; grid-template-columns: minmax(0, 1fr); gap: 34px; }
+  .params > *, .tech-grid > *, .feature-split > *, .grid > * { min-width: 0; }
+  .param-group h3 {
+    font-size: 15px; font-weight: 600; margin: 0 0 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .param-group h3::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); display: inline-block;
+  }
+  .param-group table th:nth-child(1) { width: 17%; }
+  .param-group table th:nth-child(2) { width: 21%; }
+  .param-group table th:nth-child(3) { width: 11%; }
+  .param-group table td:nth-child(2),
+  .param-group table td:nth-child(3) { white-space: nowrap; }
+  .param-group table td:nth-child(4) { color: var(--ink-2); }
+
+  #formats table th:nth-child(1) { width: 22%; }
+  #formats table th:nth-child(2) { width: 18%; }
+  #formats tbody td:nth-child(2) { white-space: nowrap; }
+
+  /* ---------- 技术说明 ---------- */
+  .tech { background: var(--bg-soft); }
+  .tech-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 44px; align-items: start; }
+  .tech-list { list-style: none; margin: 0; padding: 0; }
+  .tech-list li { position: relative; padding-left: 26px; margin-bottom: 16px; font-size: 14.5px; color: var(--ink-2); }
+  .tech-list li::before {
+    content: ""; position: absolute; left: 0; top: 9px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); opacity: .8;
+  }
+  .tech-list strong { color: var(--ink); font-weight: 600; }
+
+  pre {
+    margin: 0; padding: 22px; overflow-x: auto;
+    background: #0c1220; color: #cfd6e4;
+    border-radius: 14px; font-size: 12.2px; line-height: 1.85;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    box-shadow: var(--shadow-sm);
+  }
+  pre .c { color: #6b7896; }
+  pre .k { color: #7fd1c8; }
+  pre .n { color: #e2b872; }
+  pre .h { color: #8fa6d8; }
+
+  .bar-demo { margin-top: 20px; }
+  .bar-track { height: 14px; border-radius: 4px; background: #e6e8ec; overflow: hidden; display: flex; }
+  .bar-a { background: #b9c3d4; height: 100%; }
+  .bar-b { background: var(--accent); height: 100%; }
+  .bar-legend {
+    display: flex; gap: 20px; margin-top: 9px;
+    font-size: 12.5px; color: var(--ink-3); flex-wrap: wrap;
+  }
+  .bar-legend i {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 2px; margin-right: 6px; vertical-align: 1px;
+  }
+  .bar-legend .a { background: #b9c3d4; }
+  .bar-legend .b { background: var(--accent); }
+
+  /* ---------- 流程 ---------- */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; counter-reset: step; }
+  .step { position: relative; padding-top: 30px; }
+  .step::before {
+    counter-increment: step; content: counter(step, decimal-leading-zero);
+    position: absolute; top: 0; left: 0;
+    font-size: 12px; font-weight: 700; letter-spacing: .08em;
+    color: var(--accent);
+  }
+  .step::after {
+    content: ""; position: absolute; top: 8px; left: 30px; right: -6px; height: 1px;
+    background: var(--line-strong);
+  }
+  .step:last-child::after { display: none; }
+  .step h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+  .step p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+
+  /* ---------- FAQ ---------- */
+  .faq { max-width: 760px; margin: 0 auto; }
+  details {
+    border-bottom: 1px solid var(--line); padding: 6px 0;
+  }
+  details summary {
+    cursor: pointer; list-style: none; padding: 16px 34px 16px 0;
+    font-size: 15.5px; font-weight: 500; position: relative;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after {
+    content: ""; position: absolute; right: 6px; top: 50%;
+    width: 8px; height: 8px; margin-top: -5px;
+    border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3);
+    transform: rotate(45deg); transition: transform .2s;
+  }
+  details[open] summary::after { transform: rotate(-135deg); margin-top: -1px; }
+  details .answer { font-size: 14.5px; color: var(--ink-2); padding: 0 40px 18px 0; margin-top: -4px; }
+  details .answer p { margin: 0 0 10px; }
+  details .answer p:last-child { margin-bottom: 0; }
+
+  /* ---------- 下载区 ---------- */
+  .download {
+    background:
+      radial-gradient(700px 320px at 20% 0%, rgba(52,170,178,.24), transparent 62%),
+      linear-gradient(150deg, #0a0f1c, #0d2030 70%);
+    color: #fff; border-radius: 24px; padding: 56px 40px; text-align: center;
+  }
+  .download h2 { color: #fff; }
+  .download p { color: rgba(255,255,255,.7); max-width: 560px; margin: 0 auto 28px; }
+  .download .btn-primary { background: #fff; color: #0b1220; }
+  .download .hero-meta { margin-top: 20px; }
+
+  /* ---------- 页脚 ---------- */
+  footer {
+    border-top: 1px solid var(--line); padding: 34px 0 48px;
+    font-size: 13px; color: var(--ink-3);
+  }
+  .foot { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: center; }
+  .foot-links { display: flex; gap: 20px; }
+  .foot-links a:hover { color: var(--ink); }
+
+  /* ---------- 动效 ---------- */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 900px) {
+    .feature-split { grid-template-columns: 1fr; gap: 26px; }
+    .grid-3 { grid-template-columns: repeat(2, 1fr); }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .tech-grid, .ui-grid, .compare-wrap { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: repeat(2, 1fr); }
+    .nav-links { display: none; }
+    .nav-cta { margin-left: auto; }
+  }
+  @media (max-width: 620px) {
+    table { min-width: 540px; }
+    section { padding: 64px 0; }
+    .grid-3, .grid-2 { grid-template-columns: 1fr; }
+    .hero { padding-top: 56px; }
+    .hero-shot { margin-bottom: -70px; padding: 0 16px; }
+    .hero-spacer { height: 96px; }
+    .download { padding: 40px 22px; }
+    .steps { grid-template-columns: 1fr; }
+    .step::after { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <img src="assets/icon-256.png" alt="水印图标">
+      <span>水印</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#effect">效果</a>
+      <a href="#formats">支持格式</a>
+      <a href="#params">参数</a>
+      <a href="#tech">原理</a>
+      <a href="#faq">问答</a>
+    </div>
+    <a class="nav-cta" href="assets/Watermark.dmg" download>下载</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-content">
+    <img class="hero-icon" src="assets/icon-256.png" alt="水印应用图标">
+    <h1>给图片和 PDF 加水印<br><span>拖进来就好</span></h1>
+    <p class="lead">
+      原生 macOS 应用，纯 Swift 编写，完全离线运行。
+      PDF 只做增量追加，原文件字节不动，书签、注释、表单全部保留；图片保持原格式与 EXIF。
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="assets/Watermark.dmg" download>下载 macOS 版</a>
+      <a class="btn btn-ghost" href="#effect">先看效果</a>
+    </div>
+    <div class="hero-meta">
+      <span>版本 0.1.0</span>
+      <span>macOS 13 及以上</span>
+      <span>Apple 芯片（arm64）</span>
+      <span>安装包 1.1 MB</span>
+    </div>
+  </div>
+  <div class="hero-shot">
+    <img src="assets/ui.png" alt="水印应用主界面：左侧文件列表，右侧带水印的 PDF 预览">
+  </div>
+</header>
+<div class="hero-spacer"></div>
+
+<!-- 关键指标 -->
+<section class="tight" id="overview">
+  <div class="wrap">
+    <div class="stats reveal">
+      <div class="stat"><b>0 字节</b><span>原文件被改动的字节数。输出永远是另存的新文件</span></div>
+      <div class="stat"><b>增量 7.8 KB</b><span>示例文档（2 页 A4）加水印后仅追加的体积</span></div>
+      <div class="stat"><b>9 + 自定义</b><span>位置锚点，配合平铺可覆盖整页任意区域</span></div>
+      <div class="stat"><b>0 依赖</b><span>全部基于系统框架：CoreGraphics、CoreText、ImageIO、PDFKit</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 功能 -->
+<section id="features">
+  <div class="wrap">
+    <p class="eyebrow">功能</p>
+    <h2>能做的事，一次说清</h2>
+    <p class="section-desc">
+      文字或图片两种水印，一套布局参数同时作用于图片与 PDF，边调边看，调好一口气批处理。
+    </p>
+
+    <div class="grid grid-3">
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h7"/></svg></div>
+        <h3>文字水印</h3>
+        <p>自定义内容、字体、字号、颜色、加粗、描边、字距与行距，支持多行文本。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/></svg></div>
+        <h3>图片水印</h3>
+        <p>选择 PNG、JPEG、TIFF 等任意图片作水印，按画布宽度百分比缩放，保留透明度。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.4"/></svg></div>
+        <h3>实时预览</h3>
+        <p>参数一改，右侧立刻按最终效果重绘，所见即所得。PDF 可逐页翻看、定位到任意页。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h6l2 3h10v9a2 2 0 0 1-2 2H3z"/><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3"/></svg></div>
+        <h3>批量处理</h3>
+        <p>一次拖入多个文件，输出到指定目录，自动追加 <code>_wm</code> 后缀，重名自动编号，绝不覆盖原文件。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></svg></div>
+        <h3>拖放即用</h3>
+        <p>文件拖到窗口任意位置即可加入。不支持的格式会明确提示，不会静默跳过。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg></div>
+        <h3>加密 PDF 也能处理</h3>
+        <p>政务与征信报告常见的「权限型加密」（打开不看密码、但禁止打印编辑）会自动解除后加水印。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 13h6M9 16.5h4"/></svg></div>
+        <h3>元数据不丢</h3>
+        <p>图片的 EXIF、GPS 定位、IPTC 与 ICC 色彩描述文件整体回写，不物理旋转像素，也不改写方向标记。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+        <h3>页面范围可选</h3>
+        <p>全部、仅首页、奇数页、偶数页，或按 <code>1,3,5-9</code> 精确指定，跳过封面与附件。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.4 2.5a7 7 0 0 0-1.7 1L6 5.5 4 9l2 1.5a7 7 0 0 0 0 2L4 14l2 3.5 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.5-2-1.5c.06-.33.1-.66.1-1z"/></svg></div>
+        <h3>设置自动保存</h3>
+        <p>所有参数自动记忆，下次启动沿用。想回到起点时，「恢复默认设置」会先列出将被改动的项。</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- 效果 -->
+<section id="effect" style="background:var(--bg-soft)">
+  <div class="wrap">
+    <p class="eyebrow">效果</p>
+    <h2>加水印前后，几乎没有区别</h2>
+    <p class="section-desc">
+      PDF 页面只追加一层水印内容流，页面本身原封不动；图片在原位图上叠一层半透明文字。
+      下面都是应用真实输出的结果。
+    </p>
+
+    <div class="compare-wrap reveal">
+      <div class="compare-col">
+        <div class="compare-label">原 PDF · 第 1 页</div>
+        <img src="assets/pdf-before.png" alt="未加水印的 PDF 页面">
+      </div>
+      <div class="compare-col">
+        <div class="compare-label on">加水印后 · 同一页</div>
+        <img src="assets/pdf-after.png" alt="加水印后的同一页 PDF，整页平铺机密文件字样">
+      </div>
+    </div>
+    <p class="caption">示例：2 页 A4 合同，文字水印「机密文件」，42° 斜置、不透明度 0.30、整页平铺</p>
+
+    <div class="reveal" style="margin-top:64px">
+      <h3 style="font-size:17px;font-weight:600;margin:0 0 6px">图片水印 · 左右拖动对比</h3>
+      <p style="font-size:14px;color:var(--ink-2);margin:0 0 16px">
+        1400 × 920 的 JPEG 原图，加「© 星河科技」斜向平铺。输出仍是 JPEG，画质档位与原图一致。
+      </p>
+      <div class="slider-compare" id="cmp" role="slider" aria-label="对比原图与加水印后的图片"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">
+        <img src="assets/photo.jpg" alt="未加水印的风景照片">
+        <div class="top" id="cmpTop">
+          <img src="assets/photo_wm.jpg" alt="加水印后的同一张风景照片">
+        </div>
+        <div class="cmp-tag l">加水印</div>
+        <div class="cmp-tag r">原图</div>
+        <div class="cmp-handle" id="cmpHandle">
+          <div class="cmp-knob">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 6l-4 6 4 6M15 6l4 6-4 6"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal feature-split" style="margin-top:70px">
+      <img src="assets/logo-example.jpg" alt="右下角带有图标水印的竖版照片">
+      <div>
+        <h3 style="font-size:18px;font-weight:600;margin:0 0 10px">图片水印：任意图片都能当图章</h3>
+        <p style="font-size:14.5px;color:var(--ink-2);margin:0 0 16px">
+          选一张 PNG 或 JPEG 作为水印，按画布宽度百分比缩放。平铺可以铺满整页，
+          关掉平铺则只落在指定锚点——这张图是把应用图标放在右下角、透明度 0.55 的效果。
+        </p>
+        <ul class="mini-list">
+          <li>宽度占比 2% – 100%，以画布宽度为基准，大小随纸张自动适配</li>
+          <li>缩略图即时可见，选错了点一下就能清除</li>
+          <li>位置、旋转、不透明度与文字水印共用同一套布局参数</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 支持格式 -->
+<section id="formats">
+  <div class="wrap">
+    <p class="eyebrow">支持范围</p>
+    <h2>支持什么，不支持什么</h2>
+    <p class="section-desc">
+      格式判断先看扩展名的统一类型标识，再嗅探文件头，所以把 PDF 改名成 .jpg 也骗不过它，反过来同样。
+    </p>
+
+    <div class="table-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>类型</th><th>支持情况</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PDF</td>
+            <td>完整支持</td>
+            <td>任意版本、任意页数；扫描件、含表单域、含注释与书签的文档均按增量方式处理。已旋转页面（<code>/Rotate 90 / 270</code>）会先摆正再铺水印。</td>
+          </tr>
+          <tr>
+            <td>JPEG / JPG</td>
+            <td>支持 · 有损</td>
+            <td>复用原图的量化表反推压缩档位，尽量贴近原始画质；不是「无损」，但不会二次降档。</td>
+          </tr>
+          <tr>
+            <td>PNG</td>
+            <td>支持 · 无损</td>
+            <td>保留透明通道与位深，输出仍是 PNG。</td>
+          </tr>
+          <tr>
+            <td>HEIC / HEIF</td>
+            <td>支持 · 接近无损</td>
+            <td>以最高质量编码写回，保留 EXIF、GPS 与色彩描述文件。</td>
+          </tr>
+          <tr>
+            <td>TIFF / BMP / TGA / ICO 等</td>
+            <td>支持</td>
+            <td>凡是系统 ImageIO 能解码、且只有单帧的位图，都会保持原格式输出。</td>
+          </tr>
+          <tr>
+            <td>GIF / 动态 WebP</td>
+            <td class="muted">不支持（多帧）</td>
+            <td>加水印会丢掉动画，应用会明确报错「动图加水印会丢失动画，暂不支持」，而不是悄悄改成静帧。</td>
+          </tr>
+          <tr>
+            <td>Word / Excel / PPT</td>
+            <td class="muted">不支持</td>
+            <td>会提示格式不支持。可先在办公软件里导出为 PDF，再加水印。</td>
+          </tr>
+          <tr>
+            <td>需要密码才能打开的 PDF</td>
+            <td class="muted">需先解除</td>
+            <td>应用无法猜密码。仅「权限型加密」（空密码即可打开、只限制打印编辑）会自动解除，真正的密码保护会提示先解除。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 参数 -->
+<section id="params" style="background:var(--bg-soft)">
+  <div class="wrap">
+    <p class="eyebrow">参数</p>
+    <h2>所有可调项与默认值</h2>
+    <p class="section-desc">
+      三个设置面板，悬浮在主窗口之外，调完关掉即可。下面列出的范围就是界面上滑杆的真实边界。
+    </p>
+
+    <div class="params">
+      <div class="param-group reveal">
+        <h3>水印内容</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>参数</th><th>范围</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>类型</td><td>文字 / 图片</td><td>文字</td><td>分段控件切换，两种配置各自独立保存</td></tr>
+              <tr><td>内容</td><td>任意文本</td><td>机密文件</td><td>支持多行，换行会按行距依次排布</td></tr>
+              <tr><td>字体</td><td>8 种</td><td>苹方</td><td>苹方 / 苹方粗 / 宋体 / 华文宋体 / 黑体 / Helvetica / Helvetica 粗 / Times</td></tr>
+              <tr><td>字号</td><td>8 – 160</td><td>28</td><td>按 1000pt 参考画布等比换算，同一设置在大纸小纸上观感一致</td></tr>
+              <tr><td>颜色</td><td>任意</td><td>深灰</td><td>系统取色器，含透明度</td></tr>
+              <tr><td>加粗</td><td>开 / 关</td><td>关</td><td>在所选字族内切换字重</td></tr>
+              <tr><td>描边</td><td>0 – 6</td><td>0</td><td>大于 0 时显示描边颜色，浅底深字或深底浅字时提高可读性</td></tr>
+              <tr><td>字距</td><td>-0.2 – 1.0</td><td>0</td><td>负值收紧，正值拉开</td></tr>
+              <tr><td>行距</td><td>0.8 – 3.0</td><td>1.25</td><td>多行文字的行间距倍数</td></tr>
+              <tr><td>图片素材</td><td>任意图片</td><td>未选择</td><td>选完显示缩略图，可一键清除</td></tr>
+              <tr><td>图片宽度占比</td><td>2% – 100%</td><td>25%</td><td>水印图片宽度相对于画布宽度</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="param-group reveal">
+        <h3>水印布局</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>参数</th><th>范围</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>位置</td><td>9 个锚点 + 自定义</td><td>正中</td><td>四角、四边中点与中心；自定义时用横向、纵向两个 0–1 的比例定位</td></tr>
+              <tr><td>旋转</td><td>-180° – 180°</td><td>42°</td><td>逆时针为正，斜置更不容易挡住正文</td></tr>
+              <tr><td>大小占比</td><td>2% – 100%</td><td>28%</td><td>单个水印宽度占画布宽度的比例</td></tr>
+              <tr><td>不透明度</td><td>0.02 – 1</td><td>0.30</td><td>整层透明度，文字与图片都生效</td></tr>
+              <tr><td>边距</td><td>0% – 25%</td><td>6%</td><td>占画布短边的比例，非平铺时决定水印离页边多远</td></tr>
+              <tr><td>平铺</td><td>开 / 关</td><td>开</td><td>关闭后只在锚点位置放一处</td></tr>
+              <tr><td>间距</td><td>1.0 – 4.0</td><td>1.15</td><td>相对水印自身外接框的倍数，1.0 为紧贴；平铺时会一路铺到画布外，保证四边不留空</td></tr>
+              <tr><td>错行排列</td><td>开 / 关</td><td>开</td><td>相邻行水平错开半格，网格感更弱</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="param-group reveal">
+        <h3>PDF 选项</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>参数</th><th>范围</th><th>默认</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>层级</td><td>内容之上 / 内容之下</td><td>内容之上</td><td>「之下」时水印被页面内容遮挡，适合需要保持正文绝对清晰的场景</td></tr>
+              <tr><td>页面范围</td><td>全部 / 仅首页 / 奇数页 / 偶数页 / 指定页</td><td>全部</td><td>指定页支持逗号与连字符表达式，见下</td></tr>
+              <tr><td>页码表达式</td><td>如 <code>1,3,5-9</code></td><td>—</td><td><code>2-</code> 表示第 2 页到末页；<code>-4</code> 表示第 1 到第 4 页；留空按全部处理</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:13px;color:var(--ink-3);margin:12px 0 0">
+          若所选范围内一页都没匹配上，应用会直接报错，而不是返回一份「成功但没有水印」的文件。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 原理 -->
+<section class="tech" id="tech">
+  <div class="wrap">
+    <p class="eyebrow">原理</p>
+    <h2>为什么它不伤文件</h2>
+    <p class="section-desc">
+      大多数「加水印」工具会把 PDF 重新排版导出，图片被重压缩、书签与表单丢失、文件体积翻倍。
+      这里换了一条路。
+    </p>
+
+    <div class="tech-grid">
+      <div>
+        <ul class="tech-list">
+          <li>
+            <strong>PDF 走增量更新。</strong>
+            原始字节一个都不改，只在文件尾部追加新的页面对象与水印内容流，
+            再用一条指向旧 xref 的 <code>/Prev</code> 把新旧两段接起来。任何标准阅读器都认这种结构。
+          </li>
+          <li>
+            <strong>书签、注释、表单、元信息原样保留。</strong>
+            它们根本没被重写，只是原封不动地留在原处。
+          </li>
+          <li>
+            <strong>旋转页先摆正再画。</strong>
+            页面带 <code>/Rotate 90</code> 或 <code>270</code> 时，先把 MediaBox 换成阅读方向、去掉旋转标记、
+            把原内容流整体套一层变换矩阵——图片不重新编码、文字层不丢，水印坐标从此和肉眼看到的方向一致。
+          </li>
+          <li>
+            <strong>权限型加密自动解锁。</strong>
+            空密码即可打开的文档（只限制打印与编辑），会先解出一份无加密副本再处理，并在结果里标注「已解除保护」。
+          </li>
+          <li>
+            <strong>图片保持原样。</strong>
+            输出沿用输入的统一类型标识（PNG 出 PNG、HEIC 出 HEIC），
+            EXIF / GPS / IPTC / ICC 整体回写，不物理旋转像素，也不改动 EXIF 方向。
+          </li>
+          <li>
+            <strong>零第三方依赖。</strong>
+            全部基于系统框架：CoreGraphics 画图、CoreText 排版、ImageIO 编解码、PDFKit 渲染预览、
+            Compression 做 zlib。安装包因此只有 1.1 MB。
+          </li>
+        </ul>
+
+        <div class="bar-demo">
+          <div class="bar-track">
+            <span class="bar-a" style="width:85.5%"></span>
+            <span class="bar-b" style="width:14.5%"></span>
+          </div>
+          <div class="bar-legend">
+            <span><i class="a"></i>原文件 46 KB，原封不动</span>
+            <span><i class="b"></i>新增水印层与对象表 7.8 KB</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <pre><span class="c">%PDF-1.7</span>
+<span class="h">1 0 obj</span> …          <span class="c">← 原文件，逐字节不动</span>
+<span class="h">12 0 obj</span> &lt;&lt; /Type /Page … &gt;&gt;
+<span class="c">…</span>
+<span class="h">xref</span>
+<span class="h">trailer</span> &lt;&lt; /Size 60 &gt;&gt;
+<span class="h">startxref</span> <span class="n">48213</span>
+<span class="c">%%EOF</span>
+
+<span class="c">% ——— 以下是应用追加的增量段 ———</span>
+<span class="h">56 0 obj</span> &lt;&lt; /Type /Page
+  /Contents [<span class="n">12</span> 0 R <span class="n">57</span> 0 R] … &gt;&gt;   <span class="c">← 挂上水印层</span>
+<span class="h">57 0 obj</span> &lt;&lt; /Length … &gt;&gt;
+  <span class="k">stream</span>
+  q 0.9 0 0 0.9 0 0 cm
+  /GS1 gs BT /F1 28 Tf …
+  (机密文件) Tj ET Q
+  <span class="k">endstream</span>
+<span class="h">endobj</span>
+<span class="h">xref</span>              <span class="c">← 只声明新增的几个对象</span>
+<span class="h">trailer</span> &lt;&lt; /Size 60 /Prev 48213 &gt;&gt;
+<span class="h">startxref</span> <span class="n">51902</span>
+<span class="c">%%EOF</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 流程 -->
+<section id="how">
+  <div class="wrap">
+    <p class="eyebrow">用法</p>
+    <h2>四步，一次拖完</h2>
+    <div class="steps reveal" style="margin-top:40px">
+      <div class="step">
+        <h3>拖入文件</h3>
+        <p>把 PDF 或图片拖到窗口任意位置，也可以点「添加文件」多选。支持一次几十个。</p>
+      </div>
+      <div class="step">
+        <h3>调参数</h3>
+        <p>打开「水印内容 / 水印布局 / PDF 选项」三个面板，右侧预览实时跟着变。</p>
+      </div>
+      <div class="step">
+        <h3>点处理</h3>
+        <p>单个文件弹出保存位置；多个文件只需选一个输出目录，文件名自动加 <code>_wm</code>。</p>
+      </div>
+      <div class="step">
+        <h3>完成</h3>
+        <p>列表里每个文件显示结果明细：页数、命中页数、追加体积或像素尺寸。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="wrap">
+    <p class="eyebrow" style="text-align:center">常见问题</p>
+    <h2 class="center" style="margin-bottom:38px">你可能想问的</h2>
+    <div class="faq">
+
+      <details>
+        <summary>会覆盖或修改我的原文件吗？</summary>
+        <div class="answer">
+          <p>不会。整个流程都是「读出原文件 → 在内存里生成新数据 → 写到新路径」，原文件始终以只读方式打开。</p>
+          <p>即使你把输出路径手动指定成原文件，应用也会拒绝写入并报错。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>加水印后 PDF 体积会变大很多吗？</summary>
+        <div class="answer">
+          <p>不会。增量更新只追加水印内容流和少量对象表，示例中两页 A4 文档只增加了 7.8 KB。</p>
+          <p>页数越多、水印层复用程度越高，增量占比越小——图片和字体都没被重新编码。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>扫描件（纯图片 PDF）能加吗？</summary>
+        <div class="answer">
+          <p>能。水印是独立的内容流，叠在扫描图上，扫描图本身不会被重新压缩，画质零损失。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>提示「需要密码」，但我在 WPS 里能直接打开？</summary>
+        <div class="answer">
+          <p>那是权限型加密：文档不需要密码就能看，只是禁止打印、复制或编辑。这类文件应用可以自动解除并直接加水印。</p>
+          <p>如果确实需要输入密码才能打开，说明是真正的加密，请先用预览或 WPS 导出一份无密码版本再处理。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>为什么合同类扫描件以前加水印只出现在一个角？</summary>
+        <div class="answer">
+          <p>这类 PDF 的页面尺寸是横向的，但带着 <code>/Rotate 270</code> 标记，阅读器会把它转成竖向显示。
+          如果按原始坐标铺水印，就会铺到一个「看不见的区域」里，只在边缘露出一点。</p>
+          <p>应用现在会先把这类页面规范化（换 MediaBox、去掉旋转标记、原内容流外包一层变换），再按看到的方向铺满整页。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>中文会变成方块或乱码吗？</summary>
+        <div class="answer">
+          <p>默认使用苹方，系统自带，不会缺字。若选了某个字族里没有的字形，系统会自动回退到可用字体，不会画出豆腐块。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>支持 Intel 芯片的 Mac 吗？</summary>
+        <div class="answer">
+          <p>当前安装包是 Apple 芯片（arm64）版本。Intel 机型需要通过 Rosetta 或自行从源码构建，暂未提供通用二进制。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>首次打开提示「无法验证开发者」怎么办？</summary>
+        <div class="answer">
+          <p>应用未做 Apple 公证。在「访达」里右键点击应用图标，选择「打开」，在弹窗中再确认一次即可；之后可正常双击启动。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>有命令行或批量脚本接口吗？</summary>
+        <div class="answer">
+          <p>目前只有图形界面。核心逻辑是一个独立的 Swift 包（WatermarkCore），可以嵌入其他 macOS 项目直接调用。</p>
+        </div>
+      </details>
+
+    </div>
+  </div>
+</section>
+
+<!-- 下载 -->
+<section class="tight" id="download">
+  <div class="wrap">
+    <div class="download">
+      <h2>下载水印</h2>
+      <p>1.1 MB，解压即用，不需要账号，不联网。原文件永远只读。</p>
+      <a class="btn btn-primary" href="assets/Watermark.dmg" download>下载 Watermark.dmg</a>
+      <div class="hero-meta">
+        <span>版本 0.1.0</span>
+        <span>macOS 13+</span>
+        <span>Apple 芯片（arm64）</span>
+        <span><a href="assets/sample.pdf" download style="color:rgba(255,255,255,.6);text-decoration:underline">下载示例 PDF 试手</a></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>水印 · Watermark for Mac &nbsp;·&nbsp; 本地运行，不收集任何数据</div>
+    <div class="foot-links">
+      <a href="#top">回到顶部</a>
+      <a href="#formats">支持格式</a>
+      <a href="#faq">常见问题</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // 图片对比滑块
+  var box = document.getElementById('cmp');
+  if (box) {
+    var top = document.getElementById('cmpTop');
+    var handle = document.getElementById('cmpHandle');
+    var dragging = false;
+
+    function setRatio(r) {
+      r = Math.max(0, Math.min(1, r));
+      top.style.clipPath = 'inset(0 ' + (100 - r * 100) + '% 0 0)';
+      handle.style.left = (r * 100) + '%';
+      box.setAttribute('aria-valuenow', Math.round(r * 100));
+    }
+
+    function move(clientX) {
+      var rect = box.getBoundingClientRect();
+      setRatio((clientX - rect.left) / rect.width);
+    }
+
+    setRatio(0.5);
+    top.style.position = 'absolute';
+    top.style.inset = '0';
+    handle.style.left = '50%';
+
+    box.addEventListener('pointerdown', function (e) {
+      dragging = true;
+      box.setPointerCapture(e.pointerId);
+      move(e.clientX);
+    });
+    box.addEventListener('pointermove', function (e) {
+      if (dragging) move(e.clientX);
+    });
+    box.addEventListener('pointerup', function () { dragging = false; });
+    box.addEventListener('pointercancel', function () { dragging = false; });
+
+    box.addEventListener('keydown', function (e) {
+      var cur = parseFloat(box.getAttribute('aria-valuenow')) / 100;
+      if (e.key === 'ArrowLeft') { setRatio(cur - 0.05); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { setRatio(cur + 0.05); e.preventDefault(); }
+    });
+  }
+
+  // 滚动淡入
+  var items = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) {
+    items.forEach(function (el) { el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+  items.forEach(function (el) { io.observe(el); });
+})();
+</script>
+</body>
+</html>

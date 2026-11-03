@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:水印}/swift",
+      "name": "Debug watermark-app (swift)",
+      "target": "watermark-app",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug watermark-app (swift)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:水印}/swift",
+      "name": "Release watermark-app (swift)",
+      "target": "watermark-app",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release watermark-app (swift)"
+    }
+  ]
+}

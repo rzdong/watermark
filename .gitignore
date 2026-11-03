@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj/
+*.xcworkspace/
+
+# 构建产物（dist 由 Scripts/build-app.sh、make-dmg.sh 生成）
+swift/dist/
+
+# 编辑器
+.vscode/
+.idea/
+
+# 临时文件
+*.swp
+*~.nib
+tmp/
